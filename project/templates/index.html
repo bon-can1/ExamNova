@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Exam Preparation Tutor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="page-bg"></div>
+<main class="container">
+    <header class="hero">
+        <h1>Exam Nova: Exam Preparation Tutor</h1>
+        <p>Create high-quality MCQs and theory answers instantly with AI-powered topic generation.</p>
+    </header>
+
+    <section class="search-panel">
+        <label for="topic">Enter your topic</label>
+        <div class="input-row">
+            <input type="text" id="topic" placeholder="Example: Operating Systems, Data Structures, Computer Networks">
+            <button id="generateBtn" onclick="generate()">Generate Exam Set</button>
+        </div>
+        <p class="hint">Students can attempt MCQs first and reveal answers only when needed.</p>
+    </section>
+
+    <section id="status" class="status hidden"></section>
+    <section id="results" class="results hidden"></section>
+</main>
+
+<script>
+let latestData = null;
+
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text || "";
+    return div.innerHTML;
+}
+
+function setStatus(message, type) {
+    const status = document.getElementById("status");
+    status.textContent = message;
+    status.className = `status ${type}`;
+    status.classList.remove("hidden");
+}
+
+function hideStatus() {
+    const status = document.getElementById("status");
+    status.classList.add("hidden");
+}
+
+function generateMcqCard(mcq, index) {
+    const options = mcq.options
+        .map((option, optionIndex) => {
+            const optionId = `mcq-${index}-opt-${optionIndex}`;
+            return `
+                <label class="option" for="${optionId}">
+                    <input type="radio" id="${optionId}" name="mcq-${index}" value="${optionIndex}">
+                    <span>${escapeHtml(option)}</span>
+                </label>
+            `;
+        })
+        .join("");
+
+    return `
+        <article class="card mcq-card" data-index="${index}">
+            <h3>Q${index + 1}. ${escapeHtml(mcq.question)}</h3>
+            <div class="options">${options}</div>
+            <div class="actions">
+                <button class="btn-secondary" onclick="checkMcqAnswer(${index})">Check My Answer</button>
+                <button class="btn-ghost" onclick="revealMcqAnswer(${index})">Reveal Correct Answer</button>
+            </div>
+            <div id="mcq-feedback-${index}" class="feedback hidden"></div>
+        </article>
+    `;
+}
+
+function generateTheoryCard(item, index) {
+    return `
+        <article class="card theory-card">
+            <h3>Theory ${index + 1}. ${escapeHtml(item.question)}</h3>
+            <button class="btn-secondary" onclick="toggleTheoryAnswer(${index})">Show / Hide Answer</button>
+            <p id="theory-answer-${index}" class="theory-answer hidden">${escapeHtml(item.answer)}</p>
+        </article>
+    `;
+}
+
+function renderResults(data) {
+    latestData = data;
+    const results = document.getElementById("results");
+
+    const mcqHtml = (data.mcqs || []).map(generateMcqCard).join("");
+    const theoryHtml = (data.theory || []).map(generateTheoryCard).join("");
+
+    results.innerHTML = `
+        <section class="card explanation-card">
+            <h2>${escapeHtml(data.topic || "Generated Topic")}</h2>
+            <p>${escapeHtml(data.explanation || "No explanation generated.")}</p>
+        </section>
+
+        <section class="section-title-row">
+            <h2>Interactive MCQ Practice</h2>
+            <button class="btn-secondary" onclick="revealAllMcqAnswers()">Reveal All Answers</button>
+        </section>
+        <section class="grid">${mcqHtml}</section>
+
+        <section class="section-title-row">
+            <h2>Theory Questions with Answers</h2>
+            <button class="btn-secondary" onclick="toggleAllTheoryAnswers()">Toggle All Answers</button>
+        </section>
+        <section class="grid">${theoryHtml}</section>
+    `;
+
+    results.classList.remove("hidden");
+}
+
+function checkMcqAnswer(mcqIndex) {
+    if (!latestData || !latestData.mcqs || !latestData.mcqs[mcqIndex]) {
+        return;
+    }
+
+    const mcq = latestData.mcqs[mcqIndex];
+    const selected = document.querySelector(`input[name="mcq-${mcqIndex}"]:checked`);
+    const feedback = document.getElementById(`mcq-feedback-${mcqIndex}`);
+
+    if (!selected) {
+        feedback.textContent = "Please choose an option first.";
+        feedback.className = "feedback warn";
+        feedback.classList.remove("hidden");
+        return;
+    }
+
+    const chosenIndex = Number(selected.value);
+    if (chosenIndex === mcq.correct_index) {
+        feedback.textContent = "Correct! Great job.";
+        feedback.className = "feedback correct";
+    } else {
+        feedback.textContent = "Not correct yet. Click 'Reveal Correct Answer' if needed.";
+        feedback.className = "feedback wrong";
+    }
+    feedback.classList.remove("hidden");
+}
+
+function revealMcqAnswer(mcqIndex) {
+    if (!latestData || !latestData.mcqs || !latestData.mcqs[mcqIndex]) {
+        return;
+    }
+
+    const mcq = latestData.mcqs[mcqIndex];
+    const feedback = document.getElementById(`mcq-feedback-${mcqIndex}`);
+    const correctText = mcq.options[mcq.correct_index] || "Unavailable";
+
+    feedback.innerHTML = `<strong>Correct Answer:</strong> ${escapeHtml(correctText)}<br><small>${escapeHtml(mcq.answer_explanation || "")}</small>`;
+    feedback.className = "feedback reveal";
+    feedback.classList.remove("hidden");
+}
+
+function revealAllMcqAnswers() {
+    if (!latestData || !latestData.mcqs) {
+        return;
+    }
+    latestData.mcqs.forEach((_, idx) => revealMcqAnswer(idx));
+}
+
+function toggleTheoryAnswer(index) {
+    const el = document.getElementById(`theory-answer-${index}`);
+    if (!el) {
+        return;
+    }
+    el.classList.toggle("hidden");
+}
+
+function toggleAllTheoryAnswers() {
+    if (!latestData || !latestData.theory) {
+        return;
+    }
+    latestData.theory.forEach((_, idx) => {
+        const el = document.getElementById(`theory-answer-${idx}`);
+        if (el) {
+            el.classList.toggle("hidden");
+        }
+    });
+}
+
+async function generate() {
+    const topicInput = document.getElementById("topic");
+    const generateBtn = document.getElementById("generateBtn");
+    const topic = topicInput.value.trim();
+
+    if (!topic) {
+        setStatus("Please enter a topic to continue.", "warn");
+        return;
+    }
+
+    hideStatus();
+    document.getElementById("results").classList.add("hidden");
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Generating...";
+    setStatus("Creating your exam set. Please wait...", "info");
+
+    try {
+        const response = await fetch("/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic })
+        });
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+            throw new Error(data.error || "Unable to generate content right now.");
+        }
+
+        renderResults(data);
+        setStatus("Your exam set is ready. Try MCQs before revealing answers.", "success");
+    } catch (error) {
+        setStatus(error.message || "Something went wrong. Please try again.", "error");
+    } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate Exam Set";
+    }
+}
+</script>
+
+</body>
+</html>
